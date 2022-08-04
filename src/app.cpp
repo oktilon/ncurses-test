@@ -18,6 +18,108 @@ enum ColorList {
 
 #define BUF_SIZE 20
 
+int textBox(const char* text, int w, int *textWd, WINDOW *wnd = NULL, int x = 0, int y = 0, int h = 0, int scroll = 0) {
+    int ix = 0,
+        lastChar = 0,
+        lineSz = 0,
+        lineBeg = 0,
+        skip = scroll,
+        py = 0;
+    char line[1024],
+        cur = text[ix];
+    short curType = 0,
+        prevType = 0;
+    bool isPrint,
+        isSplit = false;
+
+    if(textWd) *textWd = 0;
+    line[lineSz] = 0;
+
+    while(cur) {
+        isPrint = false;
+        if(cur == ' ' || cur == '\r' || cur == '\n' || cur == '\t') {
+            if(prevType == 1) {
+                lastChar = ix - 1;
+            }
+            if(cur == '\n') {
+                isPrint = true;
+                isSplit = false;
+            }
+            if(cur == ' ' || cur == '\t') {
+                if(!isSplit || lineSz) {
+                    if(lineSz == 0) lineBeg = ix;
+                    if(cur == ' ') {
+                        line[lineSz++] = cur;
+                    } else {
+                        line[lineSz++] = ' ';
+                        if(lineSz < w) line[lineSz++] = ' ';
+                        if(lineSz < w) line[lineSz++] = ' ';
+                        if(lineSz < w) line[lineSz++] = ' ';
+                    }
+                    line[lineSz] = 0;
+                    if(lineSz >= w) {
+                        isPrint = true;
+                        isSplit = true;
+                    }
+                }
+            }
+            prevType = curType;
+            curType = 2;
+        } else {
+            isSplit = false;
+            if(lineSz == 0) lineBeg = ix;
+            line[lineSz++] = cur;
+            line[lineSz] = 0;
+            if(lineSz > w) {
+                if(lastChar) {
+                    lineSz = lastChar - lineBeg + 1;
+                    ix = lastChar + 1;
+                } else {
+                    lineSz--;
+                    ix--;
+                }
+                line[lineSz] = 0;
+                isPrint = true;
+                isSplit = true;
+            }
+            prevType = curType;
+            curType = 1;
+        }
+        if(isPrint) {
+            if(textWd && *textWd < lineSz) *textWd = lineSz;
+            if(wnd) {
+                if(skip) {
+                    skip--;
+                } else {
+                    mvwprintw(wnd, py + y, x, "%s", line);
+                    py++;
+                }
+            } else {
+                py++;
+            }
+            lineSz = 0;
+            line[lineSz] = 0;
+            lastChar = 0;
+        }
+        cur = text[++ix];
+        if(h && py >= h) return h;
+    }
+    if(lineSz) {
+        if(textWd && *textWd < lineSz) *textWd = lineSz;
+        if(wnd) {
+            if(skip) {
+                skip--;
+            } else {
+                mvwprintw(wnd, py + y, x, "%s", line);
+                py++;
+            }
+        } else {
+            py++;
+        }
+    }
+    return py;
+}
+
 int main() {
 	WINDOW *w;
 	MEVENT ev;
@@ -163,6 +265,16 @@ int main() {
 	wattron(w, atBack);
 	box(w, 0, 0);
 	mvwprintw(w, 0, 2, " History ");
+
+	mvwprintw(w, 1, 48, "012345");
+    int twd = 0, tts = 0, ttsm = 0;
+    int hh = textBox("Long text example for word-wrap", 6, &twd);
+    if(hh > 4) {
+        ttsm = hh - 4;
+    }
+    mvwprintw(w, 0, 30, " w=%d h=%d s=%d/%d ", twd, hh, tts, ttsm);
+	textBox("Long text example for word-wrap", 6, &twd, w, 48, 2, 4, tts);
+
 	wattroff(w, atBack);
 	wrefresh(w);
 
@@ -214,14 +326,16 @@ int main() {
 			atTxt1 = COLOR_PAIR(ColorText1) | styles[cTxt1StyleIx];
 			atTxt2 = COLOR_PAIR(ColorText2) | styles[cTxt2StyleIx];
 			attron(atTxt1);
-			mvprintw(2, 2, "Demo text input 1");
+			mvprintw(2, 2, "Demo\ttext input 1");
 			attroff(atTxt1);
 
 			attron(atTxt2);
-			mvprintw(3, 2, "Demo text input 2");
+			mvprintw(3, 2, "Demo\t\ttext input 2");
 			attroff(atTxt2);
 
 			attron(atInfo);
+			mvprintw(1, 0, "012345678");
+			mvprintw(4, 0, "-.-.-.-.012345678");
 			mvprintw(6, 1, "TXT1 FC a/A (% 3u), BC s/S (% 3u), ST d/D (            )", cTxt1Fore, cTxt1Back);
 			mvprintw(7, 1, "TXT2 FC z/Z (% 3u), BC x/X (% 3u), ST c/C (            )", cTxt2Fore, cTxt2Back);
 			if(ch) {
@@ -236,6 +350,8 @@ int main() {
 				} else if(ev.bstate & BUTTON1_DOUBLE_CLICKED) {
 					mvprintw(10, 3, "%03i B1 DBCLK [%03i, %03i, %03i]       ", ev.id, ev.x, ev.y, ev.z);
 				} else {
+                    if(ev.bstate & BUTTON4_PRESSED && tts) tts--;
+                    if(ev.bstate & BUTTON5_PRESSED && tts < ttsm) tts++;
 					mvprintw(10, 3, "%03i MOUSE EV [%03i, %03i, %03i]       ", ev.id, ev.x, ev.y, ev.z);
 				}
 			} else {
@@ -314,6 +430,14 @@ int main() {
 					mvwprintw(w, 1+i, 22, "                          ");
 				}
 			}
+            wattron(w, atBack);
+            mvwprintw(w, 0, 30, " w=%d h=%d s=%d/%d ", twd, hh, tts, ttsm);
+            for(int yyy = 0; yyy < 4; yyy++) {
+                mvwhline(w, 2 + yyy, 48, ' ', 6);
+            }
+            textBox("Long text example for word-wrap", 6, &twd, w, 48, 2, 4, tts);
+            wattroff(w, atBack);
+
 			wrefresh(w);
 
 			move(y, x);
